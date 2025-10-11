@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat with TinyLlama</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    #chat-box {
+      width: 90%;
+      max-width: 600px;
+      height: 70vh;
+      border: 1px solid #ccc;
+      background: white;
+      overflow-y: auto;
+      padding: 1em;
+      border-radius: 10px;
+      margin-top: 1em;
+    }
+    .msg {
+      margin: 0.5em 0;
+      line-height: 1.4;
+    }
+    .user { color: #0074D9; }
+    .bot  { color: #111; background: #e9ecef; border-radius: 8px; padding: 0.4em 0.6em; display: inline-block; }
+    #input-box {
+      width: 90%;
+      max-width: 600px;
+      display: flex;
+      margin-top: 1em;
+    }
+    #prompt {
+      flex: 1;
+      padding: 0.6em;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1em;
+    }
+    #send {
+      margin-left: 0.5em;
+      padding: 0.6em 1.2em;
+      background: #0074D9;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2>💬 Chat with TinyLlama</h2>
+  <div id="chat-box"></div>
+
+  <div id="input-box">
+    <input id="prompt" type="text" placeholder="Type your message..." />
+    <button id="send">Send</button>
+  </div>
+
+  <script>
+    // Use your Cloudflare Worker as the API gateway
+    const API_URL = "https://tight-cloud-0f5e.seongj1589.workers.dev/api/generate";
+    const model = "tinyllama";
+    const chatBox = document.getElementById("chat-box");
+    const input = document.getElementById("prompt");
+    const sendBtn = document.getElementById("send");
+
+    function appendMessage(role, text) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const prompt = input.value.trim();
+      if (!prompt) return;
+      appendMessage("user", "You: " + prompt);
+      input.value = "";
+      appendMessage("bot", "Thinking...");
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, prompt })
+        });
+
+        if (!res.ok) {
+          chatBox.lastChild.textContent = `[Error ${res.status}] Request failed.`;
+          return;
+        }
+
+        // Stream Ollama’s output progressively
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let botText = "";
+        let done = false;
+
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          if (value) {
+            const chunk = decoder.decode(value, { stream: true });
+            botText += chunk;
+            const lines = botText.split("\n").filter(Boolean);
+            const lastLine = lines[lines.length - 1];
+            try {
+              const json = JSON.parse(lastLine);
+              if (json.response) {
+                chatBox.lastChild.textContent = json.response;
+              }
+            } catch (e) { /* ignore non-JSON lines */ }
+          }
+          done = readerDone;
+        }
+      } catch (err) {
+        chatBox.lastChild.textContent = "⚠️ Network error: " + err.message;
+      }
+    }
+
+    sendBtn.onclick = sendMessage;
+    input.addEventListener("keypress", e => {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
