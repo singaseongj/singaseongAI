@@ -48,7 +48,7 @@ export function createSingaseongClient({
 } = {}) {
   const hasCredentials = Boolean(clientId && clientSecret);
 
-  async function request(path, { method = 'GET', body, headers = {} } = {}) {
+  async function request(path, { method = 'GET', body, headers = {}, stream = false } = {}) {
     if (!hasCredentials) {
       throw new Error('CF Access credentials are missing. Please ensure CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET are available.');
     }
@@ -85,6 +85,30 @@ export function createSingaseongClient({
     }
 
     const response = await fetch(url, init);
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      const rawText = await response.text();
+      let payload = rawText;
+      
+      if (contentType.includes('application/json')) {
+        try {
+          payload = rawText ? JSON.parse(rawText) : null;
+        } catch (_) {
+          payload = rawText;
+        }
+      }
+      
+      const message = sanitiseErrorPayload(payload);
+      throw new Error(`Request to ${url} failed with ${response.status} ${response.statusText}: ${message}`);
+    }
+
+    // 스트리밍 응답인 경우 response 객체 반환
+    if (stream) {
+      return response;
+    }
+
+    // 일반 응답 처리
     const contentType = response.headers.get('content-type') || '';
     const rawText = await response.text();
     let payload = rawText;
@@ -97,11 +121,6 @@ export function createSingaseongClient({
       }
     }
 
-    if (!response.ok) {
-      const message = sanitiseErrorPayload(payload);
-      throw new Error(`Request to ${url} failed with ${response.status} ${response.statusText}: ${message}`);
-    }
-
     return payload;
   }
 
@@ -109,8 +128,8 @@ export function createSingaseongClient({
     return request(path, { method: 'GET' });
   }
 
-  async function post(path, body) {
-    return request(path, { method: 'POST', body });
+  async function post(path, body, { stream = false } = {}) {
+    return request(path, { method: 'POST', body, stream });
   }
 
   async function ping() {
@@ -118,7 +137,7 @@ export function createSingaseongClient({
   }
 
   // Ollama /api/generate - 단일 응답 생성
-  async function generate({ model = defaultModel, prompt, stream = false, options = {} }) {
+  async function generate({ model = defaultModel, prompt, stream = false, options = {}, onChunk = null }) {
     if (!prompt || typeof prompt !== 'string') {
       throw new Error('A non-empty prompt string is required to generate a response.');
     }
@@ -130,7 +149,14 @@ export function createSingaseongClient({
       ...options,
     };
 
-    return post('/api/generate', payload);
+    const response = await post('/api/generate', payload, { stream });
+
+    // 스트리밍 응답 처리
+    if (stream) {
+      return handleStreamResponse(response, onChunk);
+    }
+
+    return response;
   }
 
   // Ollama /api/chat - 대화형 채팅 (history 지원)
@@ -139,7 +165,8 @@ export function createSingaseongClient({
     prompt, 
     history = [], 
     stream = false,
-    options = {} 
+    options = {},
+    onChunk = null
   }) {
     if (!prompt || typeof prompt !== 'string') {
       throw new Error('A non-empty prompt string is required to send a chat message.');
@@ -164,7 +191,62 @@ export function createSingaseongClient({
       ...options,
     };
 
-    return post('/api/chat', payload);
+    const response = await post('/api/chat', payload, { stream });
+
+    // 스트리밍 응답 처리
+    if (stream) {
+      return handleStreamResponse(response, onChunk);
+    }
+
+    return response;
+  }
+
+  // 스트림 응답 처리 헬퍼 함수
+  async function handleStreamResponse(response, onChunk) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(line => line.trim());
+
+        for (const line of lines) {
+          try {
+            const json = JSON.parse(line);
+            
+            // Ollama 응답에서 텍스트 추출
+            const text = json.response || json.message?.content || '';
+            fullResponse += text;
+
+            // 콜백이 제공된 경우 각 청크마다 호출
+            if (onChunk && typeof onChunk === 'function') {
+              onChunk(json);
+            }
+
+            // 스트림 종료 체크
+            if (json.done) {
+              return {
+                ...json,
+                fullResponse,
+              };
+            }
+          } catch (e) {
+            // JSON 파싱 실패 시 무시 (불완전한 청크일 수 있음)
+            console.warn('Failed to parse chunk:', line, e);
+          }
+        }
+      }
+
+      return { fullResponse };
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   // 사용 가능한 모델 목록 조회
