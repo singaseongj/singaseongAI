@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: Deploy to GitHub Pages
 
 on:
@@ -11,21 +10,20 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
-
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Create env.js with secrets
-        run: |
-          cat > env.js << EOF
-          window.CF_ACCESS_CLIENT_ID = '${{ secrets.CF_ACCESS_CLIENT_ID }}';
-          window.CF_ACCESS_CLIENT_SECRET = '${{ secrets.CF_ACCESS_CLIENT_SECRET }}';
-          EOF
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -36,4 +34,5 @@ jobs:
           path: '.'
       
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
