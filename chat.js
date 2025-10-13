@@ -3,7 +3,7 @@
 // ============================================
 
 // Worker URL로 변경 (credentials 불필요)
-const DEFAULT_API_BASE_URL = 'https://your-worker.workers.dev';
+const DEFAULT_API_BASE_URL = 'https://tight-cloud-0f5e.seongj1589.workers.dev/';
 
 // resolveEnvVariable 함수 제거 (더 이상 필요 없음)
 
