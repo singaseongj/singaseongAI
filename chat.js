@@ -1,3 +1,7 @@
+// ============================================
+// Ollama Client
+// ============================================
+
 const DEFAULT_API_BASE_URL = 'https://api.singaseong.uk';
 
 function resolveEnvVariable(key) {
@@ -40,7 +44,7 @@ function sanitiseErrorPayload(payload) {
   }
 }
 
-export function createSingaseongClient({
+function createSingaseongClient({
   baseUrl = DEFAULT_API_BASE_URL,
   clientId = resolveEnvVariable('CF_ACCESS_CLIENT_ID'),
   clientSecret = resolveEnvVariable('CF_ACCESS_CLIENT_SECRET'),
@@ -50,7 +54,7 @@ export function createSingaseongClient({
 
   async function request(path, { method = 'GET', body, headers = {}, stream = false } = {}) {
     if (!hasCredentials) {
-      throw new Error('CF Access credentials are missing. Please ensure CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET are available.');
+      throw new Error('CF Access credentials are missing. Please configure CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET.');
     }
 
     const url = buildUrl(baseUrl, path);
@@ -265,4 +269,77 @@ export function createSingaseongClient({
     sendChatMessage,
     listModels,
   };
+}
+
+// ============================================
+// Application Code
+// ============================================
+
+// 클라이언트 초기화
+const client = createSingaseongClient();
+
+// 앱 초기화
+async function init() {
+  console.log('Initializing app...');
+  
+  if (!client.hasCredentials) {
+    console.error('Missing credentials! Please check CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET.');
+    return;
+  }
+
+  console.log('Client initialized:', {
+    baseUrl: client.baseUrl,
+    hasCredentials: client.hasCredentials,
+    defaultModel: client.defaultModel
+  });
+
+  // 연결 테스트
+  try {
+    await client.ping();
+    console.log('✓ Connected to API');
+  } catch (error) {
+    console.error('✗ Connection failed:', error.message);
+  }
+}
+
+// 사용 예시 함수들
+async function testGenerate() {
+  try {
+    const result = await client.generate({
+      prompt: 'Say hello!',
+      stream: false
+    });
+    console.log('Generate result:', result);
+  } catch (error) {
+    console.error('Generate error:', error);
+  }
+}
+
+async function testStreamingChat() {
+  try {
+    const result = await client.sendChatMessage({
+      prompt: 'Tell me a short joke',
+      stream: true,
+      onChunk: (chunk) => {
+        // 실시간으로 텍스트 출력
+        const text = chunk.response || chunk.message?.content || '';
+        if (text) {
+          process.stdout?.write?.(text) || console.log(text);
+        }
+      }
+    });
+    console.log('\n\nFull response:', result.fullResponse);
+  } catch (error) {
+    console.error('Streaming error:', error);
+  }
+}
+
+// 페이지 로드 시 초기화
+if (typeof window !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', init);
+  
+  // 전역으로 노출 (콘솔에서 테스트 가능)
+  window.client = client;
+  window.testGenerate = testGenerate;
+  window.testStreamingChat = testStreamingChat;
 }
