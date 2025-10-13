@@ -2,22 +2,10 @@
 // Ollama Client
 // ============================================
 
-const DEFAULT_API_BASE_URL = 'https://api.singaseong.uk';
+// Worker URL로 변경 (credentials 불필요)
+const DEFAULT_API_BASE_URL = 'https://your-worker.workers.dev';
 
-function resolveEnvVariable(key) {
-  if (typeof window !== 'undefined') {
-    if (window.__ENV__ && window.__ENV__[key]) {
-      return window.__ENV__[key];
-    }
-    if (window[key]) {
-      return window[key];
-    }
-  }
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
-    return process.env[key];
-  }
-  return undefined;
-}
+// resolveEnvVariable 함수 제거 (더 이상 필요 없음)
 
 function normalisePath(path) {
   if (!path) return '';
