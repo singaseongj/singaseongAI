@@ -100,110 +100,111 @@
     </div>
   </div>
 
-  <!-- env.js는 GitHub Actions에서 자동 생성됨 -->
-  <script src="env.js"></script>
+  <!-- env.js 불필요 - Worker가 credentials 처리 -->
   
   <!-- chat.js를 ES Module로 로드 -->
-  <script type="module" src="chat.js"></script>
-  
   <script type="module">
-    // chat.js에서 노출된 client 사용
-    const chatBox = document.getElementById('chat-box');
-    const promptInput = document.getElementById('prompt');
-    const sendBtn = document.getElementById('send-btn');
-    const status = document.getElementById('status');
+    // chat.js를 import하고 client를 받아옴
+    import('./chat.js').then(() => {
+      // chat.js 로드 완료 후 UI 초기화
+      initUI();
+    });
 
-    let history = [];
-    let isProcessing = false;
+    function initUI() {
+      const chatBox = document.getElementById('chat-box');
+      const promptInput = document.getElementById('prompt');
+      const sendBtn = document.getElementById('send-btn');
+      const status = document.getElementById('status');
 
-    // 메시지 추가 함수
-    function addMessage(role, content) {
-      const div = document.createElement('div');
-      div.className = `message ${role}`;
-      div.textContent = content;
-      chatBox.appendChild(div);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
+      let history = [];
+      let isProcessing = false;
 
-    // 상태 메시지 표시
-    function showStatus(message, isError = false) {
-      status.textContent = message;
-      status.className = isError ? 'status-error' : 'status-ok';
-      setTimeout(() => {
-        status.textContent = '';
-        status.className = '';
-      }, 3000);
-    }
+      // 메시지 추가 함수
+      function addMessage(role, content) {
+        const div = document.createElement('div');
+        div.className = `message ${role}`;
+        div.textContent = content;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
 
-    // 메시지 전송
-    async function sendMessage() {
-      const prompt = promptInput.value.trim();
-      if (!prompt || isProcessing) return;
+      // 상태 메시지 표시
+      function showStatus(message, isError = false) {
+        status.textContent = message;
+        status.className = isError ? 'status-error' : 'status-ok';
+        setTimeout(() => {
+          status.textContent = '';
+          status.className = '';
+        }, 3000);
+      }
 
-      isProcessing = true;
-      sendBtn.disabled = true;
-      promptInput.disabled = true;
+      // 메시지 전송
+      async function sendMessage() {
+        const prompt = promptInput.value.trim();
+        if (!prompt || isProcessing) return;
 
-      // 사용자 메시지 표시
-      addMessage('user', prompt);
-      promptInput.value = '';
+        isProcessing = true;
+        sendBtn.disabled = true;
+        promptInput.disabled = true;
 
-      try {
-        // AI 응답 영역 생성
-        const assistantDiv = document.createElement('div');
-        assistantDiv.className = 'message assistant';
-        chatBox.appendChild(assistantDiv);
+        // 사용자 메시지 표시
+        addMessage('user', prompt);
+        promptInput.value = '';
 
-        // 스트리밍으로 응답 받기
-        const result = await window.client.sendChatMessage({
-          prompt,
-          history,
-          stream: true,
-          onChunk: (chunk) => {
-            const text = chunk.response || chunk.message?.content || '';
-            if (text) {
-              assistantDiv.textContent += text;
-              chatBox.scrollTop = chatBox.scrollHeight;
+        try {
+          // AI 응답 영역 생성
+          const assistantDiv = document.createElement('div');
+          assistantDiv.className = 'message assistant';
+          chatBox.appendChild(assistantDiv);
+
+          // 스트리밍으로 응답 받기
+          const result = await window.client.sendChatMessage({
+            prompt,
+            history,
+            stream: true,
+            onChunk: (chunk) => {
+              const text = chunk.response || chunk.message?.content || '';
+              if (text) {
+                assistantDiv.textContent += text;
+                chatBox.scrollTop = chatBox.scrollHeight;
+              }
             }
-          }
-        });
+          });
 
-        // history에 추가
-        history.push(
-          { role: 'user', content: prompt },
-          { role: 'assistant', content: result.fullResponse }
-        );
+          // history에 추가
+          history.push(
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: result.fullResponse }
+          );
 
-        showStatus('응답 완료!');
-      } catch (error) {
-        console.error('Error:', error);
-        addMessage('assistant', `오류: ${error.message}`);
-        showStatus(error.message, true);
-      } finally {
-        isProcessing = false;
-        sendBtn.disabled = false;
-        promptInput.disabled = false;
-        promptInput.focus();
+          showStatus('응답 완료!');
+        } catch (error) {
+          console.error('Error:', error);
+          addMessage('assistant', `오류: ${error.message}`);
+          showStatus(error.message, true);
+        } finally {
+          isProcessing = false;
+          sendBtn.disabled = false;
+          promptInput.disabled = false;
+          promptInput.focus();
+        }
       }
+
+      // 이벤트 리스너
+      sendBtn.addEventListener('click', sendMessage);
+      promptInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      // 초기화 확인
+      showStatus('연결 확인 중...');
+      window.client.ping()
+        .then(() => showStatus('연결됨!'))
+        .catch((err) => showStatus('연결 실패: ' + err.message, true));
     }
-
-    // 이벤트 리스너
-    sendBtn.addEventListener('click', sendMessage);
-    promptInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-
-    // 초기화 확인
-    window.addEventListener('DOMContentLoaded', () => {
-      if (window.client?.hasCredentials) {
-        showStatus('연결됨!');
-      } else {
-        showStatus('인증 정보가 없습니다.', true);
-      }
-    });
   </script>
 </body>
 </html>
