@@ -34,24 +34,23 @@ function sanitiseErrorPayload(payload) {
 
 function createSingaseongClient({
   baseUrl = DEFAULT_API_BASE_URL,
-  clientId = resolveEnvVariable('CF_ACCESS_CLIENT_ID'),
-  clientSecret = resolveEnvVariable('CF_ACCESS_CLIENT_SECRET'),
+  clientId = null,
+  clientSecret = null,
   defaultModel = 'tinyllama',
 } = {}) {
   const hasCredentials = Boolean(clientId && clientSecret);
 
   async function request(path, { method = 'GET', body, headers = {}, stream = false } = {}) {
-    if (!hasCredentials) {
-      throw new Error('CF Access credentials are missing. Please configure CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET.');
-    }
-
     const url = buildUrl(baseUrl, path);
     const requestHeaders = {
-      'CF-Access-Client-Id': clientId,
-      'CF-Access-Client-Secret': clientSecret,
       Accept: 'application/json, text/plain, */*',
       ...headers,
     };
+
+    if (hasCredentials) {
+      requestHeaders['CF-Access-Client-Id'] = clientId;
+      requestHeaders['CF-Access-Client-Secret'] = clientSecret;
+    }
 
     const init = {
       method,
@@ -270,11 +269,6 @@ const client = createSingaseongClient();
 async function init() {
   console.log('Initializing app...');
   
-  if (!client.hasCredentials) {
-    console.error('Missing credentials! Please check CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET.');
-    return;
-  }
-
   console.log('Client initialized:', {
     baseUrl: client.baseUrl,
     hasCredentials: client.hasCredentials,
