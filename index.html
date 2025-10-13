@@ -148,7 +148,6 @@
       try {
         const result = await client.sendChatMessage({
           prompt,
-          history: conversation,
         });
         const reply = extractAssistantReply(result);
         thinkingMessage.textContent = `Assistant: ${reply}`;

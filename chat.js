@@ -9,11 +9,9 @@ function resolveEnvVariable(key) {
       return window[key];
     }
   }
-
   if (typeof process !== 'undefined' && process.env && process.env[key]) {
     return process.env[key];
   }
-
   return undefined;
 }
 
@@ -32,11 +30,9 @@ function sanitiseErrorPayload(payload) {
   if (payload === undefined || payload === null) {
     return 'No response body received';
   }
-
   if (typeof payload === 'string') {
     return payload;
   }
-
   try {
     return JSON.stringify(payload);
   } catch (_) {
@@ -48,6 +44,7 @@ export function createSingaseongClient({
   baseUrl = DEFAULT_API_BASE_URL,
   clientId = resolveEnvVariable('CF_ACCESS_CLIENT_ID'),
   clientSecret = resolveEnvVariable('CF_ACCESS_CLIENT_SECRET'),
+  defaultModel = 'tinyllama',
 } = {}) {
   const hasCredentials = Boolean(clientId && clientSecret);
 
@@ -120,25 +117,70 @@ export function createSingaseongClient({
     return get('/');
   }
 
-  async function sendChatMessage({ prompt, history = [] }) {
+  // Ollama /api/generate - 단일 응답 생성
+  async function generate({ model = defaultModel, prompt, stream = false, options = {} }) {
+    if (!prompt || typeof prompt !== 'string') {
+      throw new Error('A non-empty prompt string is required to generate a response.');
+    }
+
+    const payload = {
+      model,
+      prompt,
+      stream,
+      ...options,
+    };
+
+    return post('/api/generate', payload);
+  }
+
+  // Ollama /api/chat - 대화형 채팅 (history 지원)
+  async function sendChatMessage({ 
+    model = defaultModel, 
+    prompt, 
+    history = [], 
+    stream = false,
+    options = {} 
+  }) {
     if (!prompt || typeof prompt !== 'string') {
       throw new Error('A non-empty prompt string is required to send a chat message.');
     }
 
+    // Ollama chat format: messages array with role and content
+    const messages = [
+      ...history.map(msg => ({
+        role: msg.role || 'user',
+        content: msg.content || msg.prompt || msg,
+      })),
+      {
+        role: 'user',
+        content: prompt,
+      }
+    ];
+
     const payload = {
-      prompt,
-      history,
+      model,
+      messages,
+      stream,
+      ...options,
     };
 
-    return post('/chat', payload);
+    return post('/api/chat', payload);
+  }
+
+  // 사용 가능한 모델 목록 조회
+  async function listModels() {
+    return get('/api/tags');
   }
 
   return {
     baseUrl,
     hasCredentials,
+    defaultModel,
     get,
     post,
     ping,
+    generate,
     sendChatMessage,
+    listModels,
   };
 }
