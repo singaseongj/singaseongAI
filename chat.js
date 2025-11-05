@@ -1,4 +1,4 @@
-const API_URL = 'https://api.singaseong.uk/';
+const API_URL = 'https://api.singaseong.uk';
 
 function buildMessages(history = [], prompt) {
   const normalizedHistory = Array.isArray(history) ? history : [];
