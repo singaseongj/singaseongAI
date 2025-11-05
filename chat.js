@@ -1,4 +1,4 @@
-const API_URL = 'https://ollama-api.singaseong.uk';
+const API_URL = 'https://ollama-api.singaseong.uk/api/generate';
 
 function buildMessages(history = [], prompt) {
   const normalizedHistory = Array.isArray(history) ? history : [];
