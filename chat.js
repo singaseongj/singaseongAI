@@ -52,7 +52,7 @@ async function readStream(response, onChunk) {
   return fullResponse;
 }
 
-async function sendChatMessage({ prompt, history = [], stream = false, onChunk } = {}) {
+async function sendChatMessage({ prompt, history = [], stream = true, onChunk } = {}) {
   const payload = {
     model: 'tinyllama',
     prompt,
