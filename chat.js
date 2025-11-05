@@ -99,7 +99,7 @@ async function ping() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ model: 'tinyllama', prompt: 'ping', stream: false })
+      body: JSON.stringify({ model: 'tinyllama', prompt: 'ping', stream: true })
     });
 
     if (!response.ok) {
