@@ -1,4 +1,4 @@
-const API_URL = 'https://tight-cloud-0f5e.seongj1589.workers.dev/api/generate';
+const API_URL = 'https://api.singaseong.uk/api/generate';
 
 function buildMessages(history = [], prompt) {
   const normalizedHistory = Array.isArray(history) ? history : [];
