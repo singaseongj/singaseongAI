@@ -54,7 +54,7 @@ async function readStream(response, onChunk) {
 
 async function sendChatMessage({ prompt, history = [], stream = true, onChunk } = {}) {
   const payload = {
-    model: 'tinyllama',
+    model: 'Qwen2',
     prompt,
     history,
     messages: buildMessages(history, prompt),
@@ -99,7 +99,7 @@ async function ping() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ model: 'tinyllama', prompt: 'ping', stream: true })
+      body: JSON.stringify({ model: 'Qwen2', prompt: 'ping', stream: true })
     });
 
     if (!response.ok) {
