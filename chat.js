@@ -63,6 +63,9 @@ async function sendChatMessage({ prompt, history = [], stream = false, onChunk }
 
   const response = await fetch(API_URL, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify(payload)
   });
 
@@ -93,6 +96,9 @@ async function ping() {
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ model: 'tinyllama', prompt: 'ping', stream: false })
     });
 
