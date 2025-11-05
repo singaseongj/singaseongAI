@@ -30,12 +30,23 @@ async function readStream(response, onChunk) {
 
     let newlineIndex;
     while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
+      const rawLine = buffer.slice(0, newlineIndex);
       buffer = buffer.slice(newlineIndex + 1);
+
+      const line = rawLine.trim();
       if (!line) continue;
+      if (line.startsWith(':')) continue; // SSE keepalive
+
+      let payload = line;
+      if (line.startsWith('data:')) {
+        payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') {
+          continue;
+        }
+      }
 
       try {
-        const data = JSON.parse(line);
+        const data = JSON.parse(payload);
         const text = data.response || data.message?.content || '';
         if (text) {
           fullResponse += text;
