@@ -55,13 +55,24 @@ async function readStream(response, onChunk) {
     const envelope = sseEvent ? { event: sseEvent, data: payload } : { data: payload };
 
     // unify callback contract
-    if (envelope && envelope.data) {
+    const dataForCallback = (() => {
+      if (!envelope || envelope.data == null) return envelope;
+
       const maybeText = envelope.data.response || envelope.data.message?.content || '';
       if (maybeText) {
         fullResponse += maybeText;
       }
-    }
-    onChunk?.(envelope);
+
+      if (typeof envelope.data === 'object' && envelope.data !== null) {
+        return sseEvent && !('event' in envelope.data)
+          ? { ...envelope.data, event: sseEvent }
+          : envelope.data;
+      }
+
+      return envelope.data;
+    })();
+
+    onChunk?.(dataForCallback);
 
     sseEvent = null;
     sseDataLines = [];
