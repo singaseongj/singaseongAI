@@ -1,7 +1,14 @@
 const API_URL = 'https://api.singaseong.uk/api/generate?hb=1';
 
 function buildMessages(history = [], prompt) {
-  const seed = [{ role: 'system', content: 'Reply concisely (≤60 words) unless asked.' }];
+  const seed = [{
+    role: 'system',
+    content: [
+      'You are TinyLlama, a warm and friendly conversational assistant.',
+      'Respond naturally and keep the dialogue flowing like a real chat.',
+      'Stay concise (≤60 words) unless the user explicitly asks for more detail.'
+    ].join(' ')
+  }];
   const normalized = (Array.isArray(history) ? history : [])
     .filter(m => m && typeof m.role === 'string' && typeof m.content === 'string');
 
@@ -128,11 +135,12 @@ async function readStream(response, onChunk) {
 }
 
 async function sendChatMessage({ prompt, history = [], stream = true, onChunk, maxMillis = 0 } = {}) {
+  const messages = buildMessages(history, prompt);
   const payload = {
-    model: 'Qwen2:0.5B',
+    model: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
     prompt,
     history,
-    messages: buildMessages(history, prompt),
+    messages,
     stream: true,          // hb mode is for streaming
     max_tokens: 256,       // keep outputs short; adjust to taste
     temperature: 0.2
@@ -179,7 +187,7 @@ async function ping() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ model: 'Qwen2:0.5B', prompt: 'ping', stream: true })
+      body: JSON.stringify({ model: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0', prompt: 'ping', stream: true })
     });
 
     if (!response.ok) {
