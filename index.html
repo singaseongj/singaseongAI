@@ -158,12 +158,43 @@
           chatBox.appendChild(assistantDiv);
 
           // 스트리밍으로 응답 받기
+          const extractText = (chunk) => {
+            if (!chunk) return '';
+            if (typeof chunk === 'string') return chunk;
+
+            if (typeof chunk.response === 'string') return chunk.response;
+            if (chunk.message && typeof chunk.message.content === 'string') {
+              return chunk.message.content;
+            }
+
+            if (Array.isArray(chunk.choices)) {
+              const choice = chunk.choices.find((c) => c);
+              if (choice) {
+                if (typeof choice.delta?.content === 'string') {
+                  return choice.delta.content;
+                }
+                if (typeof choice.message?.content === 'string') {
+                  return choice.message.content;
+                }
+              }
+            }
+
+            if (typeof chunk.delta === 'string') return chunk.delta;
+            if (typeof chunk.text === 'string') return chunk.text;
+
+            if (chunk.data) {
+              return extractText(chunk.data);
+            }
+
+            return '';
+          };
+
           const result = await window.client.sendChatMessage({
             prompt,
             history,
             stream: true,
             onChunk: (chunk) => {
-              const text = chunk.response || chunk.message?.content || '';
+              const text = extractText(chunk);
               if (text) {
                 assistantDiv.textContent += text;
                 chatBox.scrollTop = chatBox.scrollHeight;
