@@ -41,6 +41,11 @@ async function readStream(response, onChunk) {
         continue;
       }
       
+      // SSE 제어 이벤트 필드는 무시
+      if (trimmed.startsWith('event:') || trimmed.startsWith('id:') || trimmed.startsWith('retry:')) {
+        continue;
+      }
+
       // SSE 형식 (data: prefix)
       if (trimmed.startsWith('data:')) {
         const dataStr = trimmed.substring(5).trim();
