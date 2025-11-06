@@ -5,7 +5,7 @@ function buildMessages(history = [], prompt) {
   const normalized = (Array.isArray(history) ? history : [])
     .filter(m => m && typeof m.role === 'string' && typeof m.content === 'string');
 
-  const recent = normalized.slice(-6); // last 6 messages only
+  const recent = normalized.slice(-6);
   const messages = seed.concat(recent);
   if (typeof prompt === 'string' && prompt.length > 0) {
     messages.push({ role: 'user', content: prompt });
@@ -20,188 +20,207 @@ async function readStream(response, onChunk) {
   const decoder = new TextDecoder();
   let buffer = '';
   let fullResponse = '';
-  let sseMode = false;
 
-  const flushNDJSONLine = (line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    if (trimmed.startsWith(':')) return; // SSE comments / keepalives
-    try {
-      const data = JSON.parse(trimmed);
-      const text = data.response || data.message?.content || '';
-      if (text) {
-        fullResponse += text;
-        onChunk?.(data);
-      } else {
-        // still forward non-text payloads (e.g., meta/error envelopes)
-        onChunk?.(data);
-      }
-    } catch {
-      // ignore non-JSON lines in NDJSON mode
-    }
-  };
-
-  // SSE parsing state
-  let sseEvent = null;
-  let sseDataLines = [];
-
-  const flushSSEEvent = () => {
-    if (sseDataLines.length === 0 && !sseEvent) return;
-    const dataStr = sseDataLines.join('\n');
-    let payload = dataStr;
-    try {
-      payload = JSON.parse(dataStr);
-    } catch { /* best-effort */ }
-    const envelope = sseEvent ? { event: sseEvent, data: payload } : { data: payload };
-
-    // unify callback contract
-    const dataForCallback = (() => {
-      if (!envelope || envelope.data == null) return envelope;
-
-      const maybeText = envelope.data.response || envelope.data.message?.content || '';
-      if (maybeText) {
-        fullResponse += maybeText;
-      }
-
-      if (typeof envelope.data === 'object' && envelope.data !== null) {
-        return sseEvent && !('event' in envelope.data)
-          ? { ...envelope.data, event: sseEvent }
-          : envelope.data;
-      }
-
-      return envelope.data;
-    })();
-
-    onChunk?.(dataForCallback);
-
-    sseEvent = null;
-    sseDataLines = [];
-  };
+  // 디버깅을 위한 로그
+  console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
   while (true) {
     const { value, done } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-
-    // Detect SSE mode by headers or first bytes (very forgiving)
-    // If server sends "text/event-stream", prefer SSE mode.
-    if (!sseMode) {
-      const ct = response.headers.get('Content-Type') || '';
-      if (ct.includes('text/event-stream')) sseMode = true;
-      // also switch if we see "data:" / ":" sentinel before any JSON line
-      if (!sseMode && (buffer.includes('data:') || buffer.startsWith(':'))) {
-        sseMode = true;
-      }
-    }
-
-    if (sseMode) {
-      // Parse SSE by lines; events are separated by blank line
-      let nl;
-      while ((nl = buffer.indexOf('\n')) !== -1) {
-        const raw = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        const line = raw.replace(/\r$/, '');
-
-        if (line === '') {
-          // end of event
-          flushSSEEvent();
-          continue;
-        }
-        if (line.startsWith(':')) {
-          // comment / heartbeat (ignore but keeps connection alive)
-          continue;
-        }
-        const idx = line.indexOf(':');
-        const field = (idx === -1 ? line : line.slice(0, idx)).trim();
-        const value = (idx === -1 ? '' : line.slice(idx + 1)).replace(/^ /, '');
-
-        if (field === 'event') sseEvent = value;
-        else if (field === 'data') sseDataLines.push(value);
-        // (you could handle id/retry if you add reconnection later)
-      }
-    } else {
-      // NDJSON mode
-      let nl;
-      while ((nl = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        flushNDJSONLine(line);
-      }
-    }
-
     if (done) break;
+    
+    const chunk = decoder.decode(value, { stream: true });
+    buffer += chunk;
+    
+    // 디버깅: 원시 데이터 출력
+    console.log('Raw chunk:', chunk);
+    
+    // 줄 단위로 처리 (NDJSON)
+    let lines = buffer.split('\n');
+    buffer = lines.pop() || ''; // 마지막 불완전한 줄은 버퍼에 유지
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      
+      // SSE 형식 처리
+      if (trimmed.startsWith('data:')) {
+        const dataStr = trimmed.substring(5).trim();
+        if (dataStr === '[DONE]') continue;
+        
+        try {
+          const data = JSON.parse(dataStr);
+          console.log('Parsed SSE data:', data);
+          
+          // 다양한 응답 형식 처리
+          const text = data.response || 
+                      data.content || 
+                      data.message?.content || 
+                      data.text ||
+                      data.delta?.content ||
+                      data.choices?.[0]?.delta?.content ||
+                      data.choices?.[0]?.message?.content ||
+                      '';
+                      
+          if (text) {
+            fullResponse += text;
+            onChunk?.({ response: text, ...data });
+          }
+        } catch (e) {
+          console.error('SSE 파싱 에러:', e, 'Line:', dataStr);
+        }
+      } 
+      // 일반 JSON 형식 처리
+      else {
+        try {
+          const data = JSON.parse(trimmed);
+          console.log('Parsed JSON data:', data);
+          
+          // 다양한 응답 형식 처리
+          const text = data.response || 
+                      data.content || 
+                      data.message?.content || 
+                      data.text ||
+                      data.delta?.content ||
+                      data.choices?.[0]?.delta?.content ||
+                      data.choices?.[0]?.message?.content ||
+                      '';
+                      
+          if (text) {
+            fullResponse += text;
+            onChunk?.({ response: text, ...data });
+          } else if (data.event !== 'meta') {
+            // meta 이벤트가 아닌데 텍스트가 없으면 전체 데이터 전달
+            onChunk?.(data);
+          }
+        } catch (e) {
+          // JSON이 아닌 경우 무시
+          console.log('Non-JSON line:', trimmed);
+        }
+      }
+    }
+  }
+  
+  // 남은 버퍼 처리
+  if (buffer.trim()) {
+    try {
+      const data = JSON.parse(buffer.trim());
+      const text = data.response || data.content || data.message?.content || '';
+      if (text) {
+        fullResponse += text;
+      }
+    } catch (e) {
+      // 무시
+    }
   }
 
-  // flush tail
-  if (sseMode) flushSSEEvent();
-  else if (buffer.trim()) flushNDJSONLine(buffer);
-
+  console.log('Final response:', fullResponse);
   return fullResponse;
 }
 
-async function sendChatMessage({ prompt, history = [], stream = true, onChunk, maxMillis = 0 } = {}) {
+async function sendChatMessage({ prompt, history = [], stream = true, onChunk, maxMillis = 30000 } = {}) {
+  // 다양한 페이로드 형식 시도
   const payload = {
     model: 'Qwen2:0.5B',
-    prompt,
-    history,
     messages: buildMessages(history, prompt),
-    stream: true,          // hb mode is for streaming
-    max_tokens: 256,       // keep outputs short; adjust to taste
-    temperature: 0.2
+    stream: true,
+    max_tokens: 256,
+    temperature: 0.7  // 온도를 약간 올려서 더 다양한 응답 유도
   };
 
+  console.log('Sending payload:', payload);
+
   const controller = new AbortController();
-  let timeoutId = null;
-  if (maxMillis > 0) {
-    timeoutId = setTimeout(() => controller.abort(), maxMillis);
-  } else {
-    // optional: keep a generous guard (e.g., 5 minutes)
-    timeoutId = setTimeout(() => controller.abort(), 300_000);
-  }
+  const timeoutId = setTimeout(() => controller.abort(), maxMillis);
 
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'text/event-stream'   // prefer SSE path with heartbeats
+        'Accept': 'text/event-stream, application/x-ndjson, application/json'
       },
       body: JSON.stringify(payload),
       signal: controller.signal
     });
 
+    console.log('Response status:', response.status);
+    console.log('Response Content-Type:', response.headers.get('Content-Type'));
+
     if (!response.ok) {
-      throw new Error(`API 요청 실패: ${response.status}`);
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API 요청 실패: ${response.status} - ${errorText}`);
     }
 
-    const fullResponse = stream
-      ? await readStream(response, onChunk)
-      : await response.json().then((r) => (r.response || r.message?.content || ''));
-
+    const fullResponse = await readStream(response, onChunk);
+    
+    if (!fullResponse) {
+      console.warn('응답이 비어있습니다. API 형식을 확인해주세요.');
+    }
+    
     return { fullResponse };
+  } catch (error) {
+    console.error('sendChatMessage error:', error);
+    throw error;
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
   }
 }
 
 async function ping() {
+  console.log('Pinging server...');
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ model: 'Qwen2:0.5B', prompt: 'ping', stream: true })
+      body: JSON.stringify({ 
+        model: 'Qwen2:0.5B', 
+        messages: [{ role: 'user', content: 'ping' }],
+        stream: false,
+        max_tokens: 10
+      })
     });
 
+    console.log('Ping response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error('서버 상태 확인 실패');
+      const errorText = await response.text();
+      console.error('Ping error:', errorText);
+      throw new Error('서버 상태 확인 실패: ' + errorText);
     }
+    
+    const data = await response.json();
+    console.log('Ping response:', data);
   } catch (error) {
+    console.error('Ping failed:', error);
     throw new Error(error.message || '서버에 연결할 수 없습니다.');
   }
 }
 
+// 테스트 함수 추가
+async function testAPI() {
+  console.log('=== API 테스트 시작 ===');
+  
+  // 1. 간단한 테스트
+  try {
+    const result = await sendChatMessage({
+      prompt: "Say hello",
+      onChunk: (data) => {
+        console.log('Test chunk received:', data);
+      }
+    });
+    console.log('Test result:', result);
+  } catch (e) {
+    console.error('Test failed:', e);
+  }
+  
+  console.log('=== API 테스트 종료 ===');
+}
+
 window.client = {
   sendChatMessage,
-  ping
+  ping,
+  testAPI  // 테스트 함수 추가
 };
