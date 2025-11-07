@@ -18,8 +18,33 @@
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
     h1 {
-      margin-top: 0;
+      margin: 0;
+    }
+    .model-select {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .model-select label {
+      font-weight: 600;
+      color: #555;
+    }
+    #model-select {
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      background-color: #fff;
     }
     #chat-box {
       border: 1px solid #ddd;
@@ -88,12 +113,21 @@
 </head>
 <body>
   <div class="container">
-    <h1>Singaseong Chat</h1>
-    
+    <div class="header">
+      <h1>Singaseong Chat</h1>
+      <div class="model-select">
+        <label for="model-select">LLM 모델 선택</label>
+        <select id="model-select">
+          <option value="Qwen2:0.5B" selected>Qwen2:0.5B</option>
+          <option value="tinyllama">tinyllama</option>
+        </select>
+      </div>
+    </div>
+
     <div id="status"></div>
-    
+
     <div id="chat-box"></div>
-    
+
     <div class="input-group">
       <input type="text" id="prompt" placeholder="메시지를 입력하세요..." />
       <button id="send-btn">전송</button>
@@ -101,7 +135,7 @@
   </div>
 
   <!-- env.js 불필요 - Worker가 credentials 처리 -->
-  
+
   <!-- chat.js를 ES Module로 로드 -->
   <script type="module">
     // chat.js를 import하고 client를 받아옴
@@ -115,9 +149,11 @@
       const promptInput = document.getElementById('prompt');
       const sendBtn = document.getElementById('send-btn');
       const status = document.getElementById('status');
+      const modelSelect = document.getElementById('model-select');
 
       let history = [];
       let isProcessing = false;
+      let currentModel = modelSelect.value;
 
       // 메시지 추가 함수
       function addMessage(role, content) {
@@ -132,6 +168,7 @@
       function showStatus(message, isError = false) {
         status.textContent = message;
         status.className = isError ? 'status-error' : 'status-ok';
+        if (!message) return;
         setTimeout(() => {
           status.textContent = '';
           status.className = '';
@@ -193,6 +230,7 @@
             prompt,
             history,
             stream: true,
+            model: currentModel,
             onChunk: (chunk) => {
               const text = extractText(chunk);
               if (text) {
@@ -208,7 +246,7 @@
             { role: 'assistant', content: result.fullResponse }
           );
 
-          showStatus('응답 완료!');
+          showStatus(`${currentModel} 응답 완료!`);
         } catch (error) {
           console.error('Error:', error);
           addMessage('assistant', `오류: ${error.message}`);
@@ -221,6 +259,20 @@
         }
       }
 
+      // 모델 변경 처리
+      modelSelect.addEventListener('change', async (event) => {
+        currentModel = event.target.value;
+        history = [];
+        chatBox.innerHTML = '';
+        showStatus(`${currentModel} 모델로 전환 중...`);
+        try {
+          await window.client.ping(currentModel);
+          showStatus(`${currentModel} 모델 사용 가능`);
+        } catch (error) {
+          showStatus(`${currentModel} 연결 실패: ${error.message}`, true);
+        }
+      });
+
       // 이벤트 리스너
       sendBtn.addEventListener('click', sendMessage);
       promptInput.addEventListener('keypress', (e) => {
@@ -232,9 +284,9 @@
 
       // 초기화 확인
       showStatus('연결 확인 중...');
-      window.client.ping()
-        .then(() => showStatus('연결됨!'))
-        .catch((err) => showStatus('연결 실패: ' + err.message, true));
+      window.client.ping(currentModel)
+        .then(() => showStatus(`${currentModel} 모델 연결됨!`))
+        .catch((err) => showStatus(`${currentModel} 연결 실패: ` + err.message, true));
     }
   </script>
 </body>
