@@ -159,6 +159,7 @@ async function sendChatMessage({ prompt, history = [], stream = true, onChunk, m
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
+      credentials: "include", 
       headers: {
         'Content-Type': 'application/json',
         'Accept': '*/*'
@@ -183,6 +184,7 @@ async function sendChatMessage({ prompt, history = [], stream = true, onChunk, m
       
       const retryResponse = await fetch(API_URL.replace('?hb=1', ''), {
         method: 'POST',
+        credentials: "include", 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ollamaPayload)
       });
@@ -205,6 +207,7 @@ async function ping() {
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
+      credentials: "include", 
       headers: {
         'Content-Type': 'application/json'
       },
