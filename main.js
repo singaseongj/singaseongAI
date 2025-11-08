@@ -81,7 +81,7 @@ if (ACCESS_KEY) {
 } else if (storedAccessKey) {
   setLoginStatus('저장된 접근 코드가 감지되었습니다. 동일한 코드를 입력하면 접속할 수 있습니다.', 'success');
 } else {
-  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 레포지토리 시크릿 VITE_ACCESS_KEY를 입력하세요.', 'success');
+  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 지정된 코드를 입력하세요.', 'success');
 }
 
 loginForm.addEventListener('submit', async (event) => {
