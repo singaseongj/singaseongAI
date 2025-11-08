@@ -35,24 +35,15 @@ function persistAccessKey(value) {
 
 const ACCESS_KEY = (() => {
   try {
-    if (typeof import.meta !== 'undefined' && import.meta.env && typeof import.meta.env.VITE_ACCESS_KEY === 'string') {
-      const normalized = normalizeAccessKey(import.meta.env.VITE_ACCESS_KEY);
-      if (normalized) return normalized;
+    if (
+      typeof import.meta !== 'undefined' &&
+      import.meta.env &&
+      typeof import.meta.env.VITE_ACCESS_KEY === 'string'
+    ) {
+      return normalizeAccessKey(import.meta.env.VITE_ACCESS_KEY);
     }
   } catch (error) {
     // ignore environments that do not support import.meta
-  }
-  if (typeof window !== 'undefined' && typeof window.__ACCESS_KEY__ === 'string') {
-    const normalized = normalizeAccessKey(window.__ACCESS_KEY__);
-    if (normalized) return normalized;
-  }
-  if (typeof document !== 'undefined') {
-    const fromBody = normalizeAccessKey(document.body?.dataset?.accessCode);
-    if (fromBody) return fromBody;
-
-    const metaAccess = document.querySelector('meta[name="access-code"]');
-    const fromMeta = normalizeAccessKey(metaAccess?.getAttribute('content'));
-    if (fromMeta) return fromMeta;
   }
   return '';
 })();
@@ -64,7 +55,11 @@ const accessInput = document.getElementById('access-code');
 const loginStatus = document.getElementById('login-status');
 const loginButton = loginForm.querySelector('button[type="submit"]');
 const storedAccessKey = readStoredAccessKey();
-let requiredAccessKey = ACCESS_KEY || storedAccessKey;
+const requiredAccessKey = ACCESS_KEY;
+
+if (storedAccessKey && storedAccessKey !== requiredAccessKey) {
+  persistAccessKey('');
+}
 
 let chatModuleLoaded = false;
 
@@ -76,28 +71,33 @@ function setLoginStatus(message, variant) {
   }
 }
 
-if (ACCESS_KEY) {
+if (requiredAccessKey) {
   setLoginStatus('환경에 구성된 접근 코드를 입력하면 접속할 수 있습니다.', 'success');
-} else if (storedAccessKey) {
-  setLoginStatus('저장된 접근 코드가 감지되었습니다. 동일한 코드를 입력하면 접속할 수 있습니다.', 'success');
+  if (storedAccessKey === requiredAccessKey) {
+    accessInput.value = storedAccessKey;
+  }
 } else {
-  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 지정된 코드를 입력하세요.', 'success');
+  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 관리자에게 문의하세요.', 'error');
+  loginButton.disabled = true;
+  accessInput.disabled = true;
 }
 
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const entered = normalizeAccessKey(accessInput.value);
+  if (!requiredAccessKey) {
+    setLoginStatus('환경에 접근 코드가 구성되지 않아 접속할 수 없습니다.', 'error');
+    return;
+  }
+
   if (!entered) {
     setLoginStatus('접근 코드를 입력하세요.', 'error');
     accessInput.focus();
     return;
   }
 
-  if (!requiredAccessKey) {
-    requiredAccessKey = entered;
-    persistAccessKey(requiredAccessKey);
-  } else if (entered !== requiredAccessKey) {
+  if (entered !== requiredAccessKey) {
     const message = '잘못된 접근 코드입니다. 다시 시도하세요.';
     setLoginStatus(message, 'error');
     accessInput.value = '';
