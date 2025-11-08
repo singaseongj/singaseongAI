@@ -1,3 +1,5 @@
+const ACCESS_KEY_STORAGE_KEY = 'singaseong.chat.accessKey';
+
 const ACCESS_KEY = (() => {
   const normalizeValue = (value) => {
     if (typeof value !== 'string') return '';
@@ -31,12 +33,53 @@ const ACCESS_KEY = (() => {
   return '';
 })();
 
+const readStoredAccessKey = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return '';
+  try {
+    return window.localStorage.getItem(ACCESS_KEY_STORAGE_KEY) || '';
+  } catch (error) {
+    console.warn('Failed to read stored access code:', error);
+    return '';
+  }
+};
+
+const writeStoredAccessKey = (value) => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(ACCESS_KEY_STORAGE_KEY, value);
+  } catch (error) {
+    console.warn('Failed to persist access code:', error);
+  }
+};
+
+const clearStoredAccessKey = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(ACCESS_KEY_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Failed to clear stored access code:', error);
+  }
+};
+
 const loginView = document.getElementById('login-view');
 const chatView = document.getElementById('chat-view');
 const loginForm = document.getElementById('login-form');
 const accessInput = document.getElementById('access-code');
 const loginStatus = document.getElementById('login-status');
 const loginButton = loginForm.querySelector('button[type="submit"]');
+const resetButton = document.getElementById('reset-access-code');
+
+const manualAccessAllowed = !ACCESS_KEY;
+let effectiveAccessKey = ACCESS_KEY;
+
+if (manualAccessAllowed) {
+  const storedKey = readStoredAccessKey();
+  if (storedKey) {
+    effectiveAccessKey = storedKey;
+  }
+} else {
+  clearStoredAccessKey();
+}
 
 let chatModuleLoaded = false;
 
@@ -48,15 +91,43 @@ function setLoginStatus(message, variant) {
   }
 }
 
-if (!ACCESS_KEY) {
-  setLoginStatus('접근 코드가 구성되지 않았습니다. 관리자에게 문의하세요.', 'error');
-  accessInput.disabled = true;
-  loginButton.disabled = true;
+function setResetButtonVisible(visible) {
+  if (!resetButton) return;
+  if (visible) {
+    resetButton.classList.remove('hidden');
+  } else {
+    resetButton.classList.add('hidden');
+  }
+}
+
+if (manualAccessAllowed) {
+  if (effectiveAccessKey) {
+    setLoginStatus('저장된 접근 코드가 자동으로 적용되었습니다. 동일한 코드를 입력하면 접속할 수 있습니다.', 'success');
+    setResetButtonVisible(true);
+  } else {
+    setLoginStatus('접근 코드가 구성되지 않았습니다. 받은 코드를 입력하면 이 브라우저에 저장됩니다.', 'error');
+    setResetButtonVisible(false);
+  }
+} else {
+  setResetButtonVisible(false);
+}
+
+if (resetButton) {
+  resetButton.addEventListener('click', () => {
+    if (!manualAccessAllowed) return;
+    clearStoredAccessKey();
+    effectiveAccessKey = '';
+    accessInput.disabled = false;
+    loginButton.disabled = false;
+    accessInput.value = '';
+    accessInput.focus();
+    setResetButtonVisible(false);
+    setLoginStatus('저장된 접근 코드가 초기화되었습니다. 새 코드를 입력하세요.', 'success');
+  });
 }
 
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!ACCESS_KEY) return;
 
   const entered = accessInput.value.trim();
   if (!entered) {
@@ -65,14 +136,28 @@ loginForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  if (entered !== ACCESS_KEY) {
-    setLoginStatus('잘못된 접근 코드입니다. 다시 시도하세요.', 'error');
+  const hadEffectiveKey = Boolean(effectiveAccessKey);
+
+  if (manualAccessAllowed && !effectiveAccessKey) {
+    effectiveAccessKey = entered;
+    writeStoredAccessKey(entered);
+    setResetButtonVisible(true);
+  }
+
+  if (entered !== effectiveAccessKey) {
+    const message = manualAccessAllowed
+      ? '저장된 접근 코드와 일치하지 않습니다. 다시 입력하거나 코드 초기화를 누르세요.'
+      : '잘못된 접근 코드입니다. 다시 시도하세요.';
+    setLoginStatus(message, 'error');
     accessInput.value = '';
     accessInput.focus();
     return;
   }
 
-  setLoginStatus('접속 허용되었습니다. 챗봇 UI를 불러오는 중...', 'success');
+  const successMessage = manualAccessAllowed && !hadEffectiveKey
+    ? '접속 허용되었습니다. 입력하신 접근 코드를 저장했습니다. 챗봇 UI를 불러오는 중...'
+    : '접속 허용되었습니다. 챗봇 UI를 불러오는 중...';
+  setLoginStatus(successMessage, 'success');
   accessInput.value = '';
 
   loginButton.disabled = true;
