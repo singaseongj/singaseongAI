@@ -27,7 +27,20 @@ jobs:
       
       - name: Setup Pages
         uses: actions/configure-pages@v4
-      
+
+      - name: Generate Access Hash
+        run: |
+          HASH=$(node -e "
+            const crypto = require('crypto');
+            const salt = 'singaseong-chat-2025';
+            const code = process.env.ACCESS_KEY;
+            const hash = crypto.createHash('sha256').update(salt + code).digest('hex');
+            console.log(hash);
+          ")
+          sed -i "s/%ACCESS_HASH%/$HASH/g" index.html
+        env:
+          ACCESS_KEY: ${{ secrets.VITE_ACCESS_KEY }}
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
