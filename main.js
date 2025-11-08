@@ -1,13 +1,32 @@
 const ACCESS_KEY = (() => {
+  const normalizeValue = (value) => {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
+    if (trimmed.startsWith('{{') && trimmed.endsWith('}}')) return '';
+    if (/^%[A-Z0-9_]+%$/.test(trimmed)) return '';
+    return trimmed;
+  };
+
   try {
     if (typeof import.meta !== 'undefined' && import.meta.env && typeof import.meta.env.VITE_ACCESS_KEY === 'string') {
-      return import.meta.env.VITE_ACCESS_KEY;
+      const normalized = normalizeValue(import.meta.env.VITE_ACCESS_KEY);
+      if (normalized) return normalized;
     }
   } catch (error) {
     // ignore environments that do not support import.meta
   }
   if (typeof window !== 'undefined' && typeof window.__ACCESS_KEY__ === 'string') {
-    return window.__ACCESS_KEY__;
+    const normalized = normalizeValue(window.__ACCESS_KEY__);
+    if (normalized) return normalized;
+  }
+  if (typeof document !== 'undefined') {
+    const fromBody = normalizeValue(document.body?.dataset?.accessCode);
+    if (fromBody) return fromBody;
+
+    const metaAccess = document.querySelector('meta[name="access-code"]');
+    const fromMeta = normalizeValue(metaAccess?.getAttribute('content'));
+    if (fromMeta) return fromMeta;
   }
   return '';
 })();
