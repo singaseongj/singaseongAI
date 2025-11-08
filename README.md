@@ -19,7 +19,6 @@ At build or deploy time, replace `%ACCESS_CODE%` with your environment secret.
 Values containing `%PLACEHOLDER%` or `{{PLACEHOLDER}}` are ignored so the login
 form will stay locked until a real secret is provided.
 
-If no access code is injected, the login view now allows you to enter one
-manually. The first code you submit is stored in the browser's local storage so
-subsequent visits reuse it. When a stored code is present, use the new "코드
-초기화" button to clear it before entering an updated value.
+If no access code is injected, the login form remains disabled and the chat UI
+cannot be loaded. Ensure the deployment pipeline always injects a valid access
+code through one of the supported environment placeholders above.

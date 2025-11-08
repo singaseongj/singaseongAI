@@ -196,28 +196,6 @@
       cursor: not-allowed;
     }
 
-    .link-button {
-      padding: 0;
-      background: none;
-      color: #007bff;
-      border: none;
-      border-radius: 0;
-      font-size: 13px;
-      cursor: pointer;
-      text-decoration: underline;
-    }
-
-    .link-button:hover {
-      background: none;
-      color: #0056b3;
-      text-decoration: none;
-    }
-
-    .link-button:disabled {
-      color: #999;
-      cursor: not-allowed;
-      text-decoration: none;
-    }
   </style>
 </head>
 <body data-access-code="%ACCESS_CODE%">
@@ -233,7 +211,6 @@
         <input id="access-code" type="password" autocomplete="off" autofocus required />
         <div class="login-actions">
           <button type="submit">접속하기</button>
-          <button type="button" id="reset-access-code" class="link-button hidden">코드 초기화</button>
         </div>
       </form>
       <div id="login-status" class="login-status"></div>
