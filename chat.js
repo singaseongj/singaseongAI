@@ -145,106 +145,41 @@ function extractText(data) {
   return '';
 }
 
-async function sendWithQwen({ prompt, stream = true, onChunk, maxMillis = 30000 }) {
-  const payload = {
-    model: 'Qwen2:0.5B',
-    prompt,
-    stream: true,
-    max_tokens: 256,
-    temperature: 0.7
-  };
-
+async function sendStreaming({ model, prompt, onChunk, maxMillis = 30000 }) {
+  const payload = { model, prompt, stream: true, max_tokens: 256, temperature: 0.7 };
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), maxMillis);
-
   try {
-    const response = await fetch(API_URL, {
+    const res = await fetch(API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': '*/*'
-      },
+      headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
       body: JSON.stringify(payload),
       signal: controller.signal
     });
-
-    if (!response.ok) {
-      throw new Error(`API 요청 실패: ${response.status}`);
-    }
-
-    const fullResponse = await readStream(response, onChunk);
-
-    // 빈 응답인 경우 스트리밍 없이 재시도
-    if (!fullResponse) {
-      const ollamaPayload = {
-        model: 'Qwen2:0.5B',
-        prompt,
-        stream: false
-      };
-
-      const retryResponse = await fetch(API_URL.replace('?hb=1', ''), {
+    if (!res.ok) throw new Error(`API 요청 실패: ${res.status}`);
+    const full = await readStream(res, onChunk);
+    if (!full) {
+      // non-stream fallback
+      const retry = await fetch(API_URL.replace('?hb=1', ''), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ollamaPayload)
+        body: JSON.stringify({ model, prompt, stream: false })
       });
-
-      if (retryResponse.ok) {
-        const data = await retryResponse.json();
-        return { fullResponse: data.response || data.content || '' };
+      if (retry.ok) {
+        const data = await retry.json();
+        return { fullResponse: extractText(data) || '' };
       }
     }
+    return { fullResponse: full };
+  } finally { clearTimeout(timeoutId); }
+}
 
-    return { fullResponse };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+async function sendWithQwen({ prompt, stream = true, onChunk, maxMillis = 30000 }) {
+  return sendStreaming({ model: 'Qwen2:0.5B', prompt, onChunk, maxMillis });
 }
 
 async function sendWithTinyLlama({ prompt, stream = true, onChunk, maxMillis = 30000 }) {
-  const payload = {
-    model: 'tinyllama',
-    prompt,
-    stream: false,
-    max_tokens: 128,
-    temperature: 0.7
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), maxMillis);
-
-  try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`API 요청 실패: ${response.status}`);
-    }
-
-    const text = await response.text();
-    let fullResponse = '';
-
-    try {
-      const data = JSON.parse(text);
-      fullResponse = extractText(data) || text;
-    } catch (error) {
-      fullResponse = text;
-    }
-
-    if (stream && fullResponse) {
-      onChunk?.({ response: fullResponse });
-    }
-
-    return { fullResponse };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return sendStreaming({ model: 'tinyllama', prompt, onChunk, maxMillis });
 }
 
 const MODEL_HANDLERS = {
