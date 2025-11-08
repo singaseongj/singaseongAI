@@ -7,3 +7,14 @@ This project now requires an access code before the chat UI is loaded. Configure
 using Vite or via repository secrets in CI) so the login page can validate the
 code. When prompted in the browser, enter the same value to unlock the chat
 interface.
+
+For static hosting environments where bundlers cannot inject `import.meta.env`,
+set the access code via the rendered HTML. You can expose the secret by wiring
+an environment variable to either of the following placeholders:
+
+* `<body data-access-code="%ACCESS_CODE%">`
+* `<meta name="access-code" content="%ACCESS_CODE%">`
+
+At build or deploy time, replace `%ACCESS_CODE%` with your environment secret.
+Values containing `%PLACEHOLDER%` or `{{PLACEHOLDER}}` are ignored so the login
+form will stay locked until a real secret is provided.
