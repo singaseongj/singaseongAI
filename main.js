@@ -1,4 +1,14 @@
 const ACCESS_KEY_STORAGE_KEY = 'singaseong.chat.accessKey';
+const SALT = 'singaseong-chat-2025';
+
+// 해시 함수
+async function hashCodeWithSalt(code) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(SALT + code);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 function normalizeAccessKey(value) {
   if (typeof value !== 'string') return '';
@@ -29,24 +39,16 @@ function persistAccessKey(value) {
       window.localStorage.removeItem(ACCESS_KEY_STORAGE_KEY);
     }
   } catch (error) {
-    // ignore localStorage failures (private mode, etc.)
+    // ignore localStorage failures
   }
 }
 
-const ACCESS_KEY = (() => {
-  try {
-    if (
-      typeof import.meta !== 'undefined' &&
-      import.meta.env &&
-      typeof import.meta.env.VITE_ACCESS_KEY === 'string'
-    ) {
-      return normalizeAccessKey(import.meta.env.VITE_ACCESS_KEY);
-    }
-  } catch (error) {
-    // ignore environments that do not support import.meta
-  }
-  return '';
-})();
+// HTML에서 해시값 가져오기
+function getStoredHash() {
+  const metaTag = document.querySelector('meta[name="access-hash"]');
+  if (!metaTag) return '';
+  return normalizeAccessKey(metaTag.content);
+}
 
 const loginView = document.getElementById('login-view');
 const chatView = document.getElementById('chat-view');
@@ -54,12 +56,9 @@ const loginForm = document.getElementById('login-form');
 const accessInput = document.getElementById('access-code');
 const loginStatus = document.getElementById('login-status');
 const loginButton = loginForm.querySelector('button[type="submit"]');
-const storedAccessKey = readStoredAccessKey();
-const requiredAccessKey = ACCESS_KEY;
 
-if (storedAccessKey && storedAccessKey !== requiredAccessKey) {
-  persistAccessKey('');
-}
+const storedAccessKey = readStoredAccessKey();
+const requiredHash = getStoredHash();
 
 let chatModuleLoaded = false;
 
@@ -71,22 +70,51 @@ function setLoginStatus(message, variant) {
   }
 }
 
-if (requiredAccessKey) {
-  setLoginStatus('환경에 구성된 접근 코드를 입력하면 접속할 수 있습니다.', 'success');
-  if (storedAccessKey === requiredAccessKey) {
-    accessInput.value = storedAccessKey;
+// 초기화
+async function initialize() {
+  if (!requiredHash) {
+    setLoginStatus('접근 코드가 구성되지 않았습니다. 관리자에게 문의하세요.', 'error');
+    loginButton.disabled = true;
+    accessInput.disabled = true;
+    return;
   }
-} else {
-  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 관리자에게 문의하세요.', 'error');
-  loginButton.disabled = true;
-  accessInput.disabled = true;
+
+  // 저장된 키가 있으면 자동 로그인 시도
+  if (storedAccessKey) {
+    setLoginStatus('저장된 세션 확인 중...', 'success');
+    const storedHash = await hashCodeWithSalt(storedAccessKey);
+    
+    if (storedHash === requiredHash) {
+      setLoginStatus('저장된 세션으로 자동 접속 중...', 'success');
+      loginButton.disabled = true;
+      loginButton.textContent = '로딩 중...';
+      
+      try {
+        await loadChatInterface();
+      } catch (error) {
+        console.error('Failed to load chat UI:', error);
+        setLoginStatus(`챗봇 UI 로드 실패: ${error.message}`, 'error');
+        persistAccessKey(''); // 잘못된 키 삭제
+        loginButton.disabled = false;
+        loginButton.textContent = '접속하기';
+      }
+      return;
+    } else {
+      // 저장된 키가 유효하지 않으면 삭제
+      persistAccessKey('');
+    }
+  }
+
+  setLoginStatus('접근 코드를 입력하세요.', '');
 }
 
+// 로그인 폼 처리
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const entered = normalizeAccessKey(accessInput.value);
-  if (!requiredAccessKey) {
+  
+  if (!requiredHash) {
     setLoginStatus('환경에 접근 코드가 구성되지 않아 접속할 수 없습니다.', 'error');
     return;
   }
@@ -97,27 +125,32 @@ loginForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  if (entered !== requiredAccessKey) {
-    const message = '잘못된 접근 코드입니다. 다시 시도하세요.';
-    setLoginStatus(message, 'error');
-    accessInput.value = '';
-    accessInput.focus();
-    return;
-  }
-
-  persistAccessKey(requiredAccessKey);
-
-  setLoginStatus('접속 허용되었습니다. 챗봇 UI를 불러오는 중...', 'success');
-  accessInput.value = '';
-
   loginButton.disabled = true;
-  loginButton.textContent = '로딩 중...';
+  loginButton.textContent = '확인 중...';
+  setLoginStatus('접근 코드 확인 중...', '');
 
   try {
+    const enteredHash = await hashCodeWithSalt(entered);
+    
+    if (enteredHash !== requiredHash) {
+      setLoginStatus('잘못된 접근 코드입니다. 다시 시도하세요.', 'error');
+      accessInput.value = '';
+      accessInput.focus();
+      loginButton.disabled = false;
+      loginButton.textContent = '접속하기';
+      return;
+    }
+
+    // 올바른 코드
+    persistAccessKey(entered);
+    setLoginStatus('접속 허용되었습니다. 챗봇 UI를 불러오는 중...', 'success');
+    accessInput.value = '';
+    loginButton.textContent = '로딩 중...';
+
     await loadChatInterface();
   } catch (error) {
-    console.error('Failed to load chat UI:', error);
-    setLoginStatus(`챗봇 UI 로드 실패: ${error.message}`, 'error');
+    console.error('Login error:', error);
+    setLoginStatus(`오류 발생: ${error.message}`, 'error');
     loginButton.disabled = false;
     loginButton.textContent = '접속하기';
   }
@@ -287,3 +320,6 @@ function initChatUI() {
     .then(() => showStatus(`${currentModel} 모델 연결됨!`))
     .catch((err) => showStatus(`${currentModel} 연결 실패: ${err.message}`, true));
 }
+
+// 페이지 로드 시 초기화
+initialize();
