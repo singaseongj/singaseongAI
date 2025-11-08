@@ -1,33 +1,57 @@
 const ACCESS_KEY_STORAGE_KEY = 'singaseong.chat.accessKey';
 
-const ACCESS_KEY = (() => {
-  const normalizeValue = (value) => {
-    if (typeof value !== 'string') return '';
-    const trimmed = value.trim();
-    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
-    if (trimmed.startsWith('{{') && trimmed.endsWith('}}')) return '';
-    if (/^%[A-Z0-9_]+%$/.test(trimmed)) return '';
-    return trimmed;
-  };
+function normalizeAccessKey(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
+  if (trimmed.startsWith('{{') && trimmed.endsWith('}}')) return '';
+  if (/^%[A-Z0-9_]+%$/.test(trimmed)) return '';
+  return trimmed;
+}
 
+function readStoredAccessKey() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return '';
+    const stored = window.localStorage.getItem(ACCESS_KEY_STORAGE_KEY);
+    return normalizeAccessKey(stored);
+  } catch (error) {
+    return '';
+  }
+}
+
+function persistAccessKey(value) {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const normalized = normalizeAccessKey(value);
+    if (normalized) {
+      window.localStorage.setItem(ACCESS_KEY_STORAGE_KEY, normalized);
+    } else {
+      window.localStorage.removeItem(ACCESS_KEY_STORAGE_KEY);
+    }
+  } catch (error) {
+    // ignore localStorage failures (private mode, etc.)
+  }
+}
+
+const ACCESS_KEY = (() => {
   try {
     if (typeof import.meta !== 'undefined' && import.meta.env && typeof import.meta.env.VITE_ACCESS_KEY === 'string') {
-      const normalized = normalizeValue(import.meta.env.VITE_ACCESS_KEY);
+      const normalized = normalizeAccessKey(import.meta.env.VITE_ACCESS_KEY);
       if (normalized) return normalized;
     }
   } catch (error) {
     // ignore environments that do not support import.meta
   }
   if (typeof window !== 'undefined' && typeof window.__ACCESS_KEY__ === 'string') {
-    const normalized = normalizeValue(window.__ACCESS_KEY__);
+    const normalized = normalizeAccessKey(window.__ACCESS_KEY__);
     if (normalized) return normalized;
   }
   if (typeof document !== 'undefined') {
-    const fromBody = normalizeValue(document.body?.dataset?.accessCode);
+    const fromBody = normalizeAccessKey(document.body?.dataset?.accessCode);
     if (fromBody) return fromBody;
 
     const metaAccess = document.querySelector('meta[name="access-code"]');
-    const fromMeta = normalizeValue(metaAccess?.getAttribute('content'));
+    const fromMeta = normalizeAccessKey(metaAccess?.getAttribute('content'));
     if (fromMeta) return fromMeta;
   }
   return '';
@@ -39,7 +63,8 @@ const loginForm = document.getElementById('login-form');
 const accessInput = document.getElementById('access-code');
 const loginStatus = document.getElementById('login-status');
 const loginButton = loginForm.querySelector('button[type="submit"]');
-const REQUIRED_ACCESS_KEY = ACCESS_KEY;
+const storedAccessKey = readStoredAccessKey();
+let requiredAccessKey = ACCESS_KEY || storedAccessKey;
 
 let chatModuleLoaded = false;
 
@@ -51,36 +76,36 @@ function setLoginStatus(message, variant) {
   }
 }
 
-if (REQUIRED_ACCESS_KEY) {
+if (ACCESS_KEY) {
   setLoginStatus('환경에 구성된 접근 코드를 입력하면 접속할 수 있습니다.', 'success');
+} else if (storedAccessKey) {
+  setLoginStatus('저장된 접근 코드가 감지되었습니다. 동일한 코드를 입력하면 접속할 수 있습니다.', 'success');
 } else {
-  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 관리자에게 문의하세요.', 'error');
-  loginButton.disabled = true;
-  accessInput.disabled = true;
+  setLoginStatus('환경에 접근 코드가 구성되지 않았습니다. 레포지토리 시크릿 VITE_ACCESS_KEY를 입력하세요.', 'success');
 }
 
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const entered = accessInput.value.trim();
+  const entered = normalizeAccessKey(accessInput.value);
   if (!entered) {
     setLoginStatus('접근 코드를 입력하세요.', 'error');
     accessInput.focus();
     return;
   }
 
-  if (!REQUIRED_ACCESS_KEY) {
-    setLoginStatus('환경에 접근 코드가 구성되지 않아 접속할 수 없습니다.', 'error');
-    return;
-  }
-
-  if (entered !== REQUIRED_ACCESS_KEY) {
+  if (!requiredAccessKey) {
+    requiredAccessKey = entered;
+    persistAccessKey(requiredAccessKey);
+  } else if (entered !== requiredAccessKey) {
     const message = '잘못된 접근 코드입니다. 다시 시도하세요.';
     setLoginStatus(message, 'error');
     accessInput.value = '';
     accessInput.focus();
     return;
   }
+
+  persistAccessKey(requiredAccessKey);
 
   setLoginStatus('접속 허용되었습니다. 챗봇 UI를 불러오는 중...', 'success');
   accessInput.value = '';
